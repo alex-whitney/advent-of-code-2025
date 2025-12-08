@@ -1,38 +1,41 @@
 package lib
 
 import (
+	"errors"
 	"fmt"
+	"math"
+	"strings"
 )
 
 type Point[T Number] struct {
-	X T
-	Y T
+	Coordinates []T
 }
 
-func NewPoint[T Number](x T, y T) Point[T] {
+func NewPoint[T Number](coordinates []T) Point[T] {
 	return Point[T]{
-		X: x,
-		Y: y,
+		Coordinates: coordinates,
 	}
 }
 
 func (p *Point[T]) String() string {
-	return fmt.Sprintf("%v,%v", p.X, p.Y)
+	s := make([]string, len(p.Coordinates))
+
+	for i, c := range p.Coordinates {
+		s[i] = fmt.Sprintf("%v", c)
+	}
+
+	return "(" + strings.Join(s, ",") + ")"
 }
 
-func (p *Point[T]) ManhattanDistance(p2 Point[T]) T {
-	var distance T
-	if p2.X > p.X {
-		distance += p2.X - p.X
-	} else {
-		distance += p.X - p2.X
+func (p *Point[T]) Distance(p2 *Point[T]) (float64, error) {
+	if len(p.Coordinates) != len(p2.Coordinates) {
+		return 0, errors.New("point dimensions are not equal")
 	}
 
-	if p2.Y > p.Y {
-		distance += p2.Y - p.Y
-	} else {
-		distance += p.Y - p2.Y
+	var total float64
+	for i := range p.Coordinates {
+		total += math.Pow(float64(p.Coordinates[i]-p2.Coordinates[i]), 2)
 	}
 
-	return distance
+	return math.Sqrt(total), nil
 }
