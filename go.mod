@@ -3,9 +3,10 @@ module github.com/alex-whitney/advent-of-code-2025
 go 1.25
 
 require (
+	github.com/deckarep/golang-set/v2 v2.8.0
 	github.com/stretchr/testify v1.11.1
+	github.com/thomaso-mirodin/intmath v0.0.0-20160323211736-5dc6d854e46e
 	github.com/urfave/cli/v2 v2.27.7
-	github.com/deckarep/golang-set/v2 v2.8.0 
 )
 
 require (
