@@ -1,11 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/alex-whitney/advent-of-code-2025/lib"
 	"github.com/thomaso-mirodin/intmath/intgr"
@@ -61,97 +61,28 @@ func (d *Today) Part1() (string, error) {
 	return fmt.Sprintf("%d", maxArea), nil
 }
 
-func isLeft(p0 lib.Point[int], p1 lib.Point[int], p2 lib.Point[int]) int {
-	return ((p1.Coordinates[0]-p0.Coordinates[0])*(p2.Coordinates[1]-p0.Coordinates[1]) -
-		(p2.Coordinates[0]-p0.Coordinates[0])*(p1.Coordinates[1]-p0.Coordinates[1]))
-}
-
-func windingNumberTest(point lib.Point[int], polygon []lib.Point[int]) bool {
-	// https://web.archive.org/web/20130126163405/http://geomalgorithms.com/a03-_inclusion.html
-
-	counter := 0
-
-	for i := range polygon {
-		// iterate over each edge
-		p1 := polygon[i]
-
-		var p2 lib.Point[int]
-		if i == len(polygon)-1 {
-			p2 = polygon[0]
-		} else {
-			p2 = polygon[i+1]
-		}
-
-		var crossProduct int
-		computedCrossProduct := false
-		getCrossProduct := func(p0 lib.Point[int], p1 lib.Point[int], p2 lib.Point[int]) int {
-			if !computedCrossProduct {
-				crossProduct = isLeft(p0, p1, p2)
-				computedCrossProduct = true
-
-			}
-
-			return crossProduct
-		}
-
-		if p1.Coordinates[1] <= point.Coordinates[1] {
-			if p2.Coordinates[1] > point.Coordinates[1] {
-				if getCrossProduct(p1, p2, point) > 0 {
-					counter++
-				}
-			}
-		} else {
-			if p2.Coordinates[1] <= point.Coordinates[1] {
-				if getCrossProduct(p1, p2, point) < 0 {
-					counter--
-				}
-			}
-		}
-
-		// special case -- is this point _on_ the edge?
-		// winding number treats the edges as outside
-		if point.Coordinates[0] >= intgr.Min(p1.Coordinates[0], p2.Coordinates[0]) &&
-			point.Coordinates[0] <= intgr.Max(p1.Coordinates[0], p2.Coordinates[0]) &&
-			point.Coordinates[1] >= intgr.Min(p1.Coordinates[1], p2.Coordinates[1]) &&
-			point.Coordinates[1] <= intgr.Max(p1.Coordinates[1], p2.Coordinates[1]) {
-			if getCrossProduct(point, p1, p2) == 0 {
-				return true
-			}
-		}
-	}
-
-	return counter != 0
-}
-
 func isRectInPolygon(p1 lib.Point[int], p2 lib.Point[int], polygon []lib.Point[int]) (result bool) {
-	x1 := p1.Coordinates[0]
-	x2 := p2.Coordinates[0]
-	if x2 < x1 {
-		x1, x2 = x2, x1
-	}
+	x1, y1 := p1.Coordinates[0], p1.Coordinates[1]
+	x2, y2 := p2.Coordinates[0], p2.Coordinates[1]
 
-	y1 := p1.Coordinates[1]
-	y2 := p2.Coordinates[1]
-	if y2 < y1 {
-		y1, y2 = y2, y1
-	}
+	// bounding box crosses an edge?
+	// all edges of the polygon are vertical or horizontal, so a bounding box check is sufficient
+	for idx := range polygon {
+		x3, y3 := polygon[idx].Coordinates[0], polygon[idx].Coordinates[1]
 
-	for x := x1; x <= x2; x++ {
-		if !windingNumberTest(lib.NewPoint([]int{x, y1}), polygon) {
-			return false
+		var x4, y4 int
+		if idx < len(polygon)-1 {
+			x4, y4 = polygon[idx+1].Coordinates[0], polygon[idx+1].Coordinates[1]
+		} else {
+			x4, y4 = polygon[0].Coordinates[0], polygon[0].Coordinates[1]
 		}
-		if !windingNumberTest(lib.NewPoint([]int{x, y2}), polygon) {
-			return false
-		}
-	}
 
-	for y := y1; y <= y2; y++ {
-		if !windingNumberTest(lib.NewPoint([]int{x1, y}), polygon) {
-			return false
+		if intgr.Max(x1, x2) <= intgr.Min(x3, x4) || intgr.Min(x1, x2) >= intgr.Max(x3, x4) ||
+			intgr.Max(y1, y2) <= intgr.Min(y3, y4) || intgr.Min(y1, y2) >= intgr.Max(y3, y4) {
+			continue
 		}
-		if !windingNumberTest(lib.NewPoint([]int{x2, y}), polygon) {
-			return false
-		}
+
+		return false
 	}
 
 	return true
@@ -161,16 +92,6 @@ type solution struct {
 	p1   lib.Point[int]
 	p2   lib.Point[int]
 	area int
-}
-
-func (d *Today) checkSolution(solutions []solution, worker int, workerCount int, validSolutions chan<- solution) {
-	for i := worker; i < len(solutions); i += workerCount {
-		if isRectInPolygon(solutions[i].p1, solutions[i].p2, d.points) {
-			validSolutions <- solutions[i]
-		} else {
-			fmt.Printf("Checked solution %d of %d (%.2f%%)\n", i+1, len(solutions), float64(i+1)/float64(len(solutions))*100)
-		}
-	}
 }
 
 func (d *Today) Part2() (string, error) {
@@ -199,31 +120,13 @@ func (d *Today) Part2() (string, error) {
 		return solutions[i].area > solutions[j].area
 	})
 
-	// I could probably eagerly exit if I find a solution, rather than checking all possible
-	// solutions, but that's a lot more bookkeeping
-	numWorkers := 24
-	var wg sync.WaitGroup
-	results := make(chan solution, len(solutions))
-
-	for i := range numWorkers {
-		wg.Go(func() {
-			d.checkSolution(solutions, i, numWorkers, results)
-		})
+	for _, s := range solutions {
+		if isRectInPolygon(s.p1, s.p2, d.points) {
+			return strconv.Itoa(s.area), nil
+		}
 	}
 
-	wg.Wait()
-	close(results)
-
-	valid := []solution{}
-	for s := range results {
-		valid = append(valid, s)
-	}
-
-	sort.Slice(valid, func(i, j int) bool {
-		return valid[i].area > valid[j].area
-	})
-
-	return strconv.Itoa(valid[0].area), nil
+	return "", errors.New("no solution found")
 }
 
 func main() {
